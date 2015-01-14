@@ -214,20 +214,20 @@ class Response(object):
 
 class Redirect(Response):
 
-    def __init__(self, location):
-        Response.__init__(self, '302 Found', Location=location)
+    def __init__(self, location, **kwargs):
+        Response.__init__(self, '302 Found', Location=location, **kwargs)
         return
 
 class NotFound(Response):
 
-    def __init__(self):
-        Response.__init__(self, '404 Not Found')
+    def __init__(self, **kwargs):
+        Response.__init__(self, '404 Not Found', **kwargs)
         return
 
 class InternalError(Response):
 
-    def __init__(self):
-        Response.__init__(self, '500 Internal Server Error')
+    def __init__(self, **kwargs):
+        Response.__init__(self, '500 Internal Server Error', **kwargs)
         return
 
 
@@ -381,7 +381,7 @@ td { padding:0.5em; }
 th { background:#eee; }
 h1 { border-bottom: solid darkblue 4pt; }
 .highlight { background:#dfd; }
-.error { font-weight: bold; text-color: red; }
+.error { font-weight: bold; color: red; }
 .upload { margin: 1em; padding:1em; background:#fdf; border: solid black 2pt; }
 --></style>
 '''
@@ -392,6 +392,12 @@ h1 { border-bottom: solid darkblue 4pt; }
         u'<body><h1>$(folder)/ - エラー</h1>\n'
         u'<div class=error>$(message)</div>\n'
         u'<p> <a href="$(BASEURL)/view/$(folder)/">$(folder)/ に戻る</a>\n',
+        TITLE=config.TITLE, BASEURL=config.BASEURL)
+    LOCKED = Template(
+        u'<title>$(TITLE) - $(folder)/ - エラー</title>\n'
+        u'<body><h1>$(folder)/ - エラー</h1>\n'
+        u'<div class=error>このフォルダはロックされています。</div>\n'
+        u'<p> <a href="$(BASEURL)/">戻る</a>\n',
         TITLE=config.TITLE, BASEURL=config.BASEURL)
     BUFSIZ = 65536
 
@@ -456,8 +462,8 @@ h1 { border-bottom: solid darkblue 4pt; }
 
     @POST(r'/logout')
     def logout(self, _cookie, f='/'):
-        _cookie['session'] = ''
-        resp = Redirect(config.BASEURL+f)
+        _cookie['session']['expires'] = -1
+        resp = Redirect(config.BASEURL+f, Expires='-1')
         resp.headers.extend( ('Set-Cookie', m.OutputString())
                              for m in _cookie.values() )
         yield resp
@@ -509,6 +515,8 @@ h1 { border-bottom: solid darkblue 4pt; }
             c = ''
             if folder == username:
                 c = 'highlight'
+            elif config.LOCKED:
+                continue
             yield Template(
                 u' <tr><td class=$(c)>'
                 u'<a href="$(BASEURL)/view/$(folder)/">$(folder)</a>'
@@ -524,6 +532,12 @@ h1 { border-bottom: solid darkblue 4pt; }
             username = self._auth(_cookie)
         except self.NotAuthenticated:
             yield Redirect(config.BASEURL+'/login?f='+urlenc(_path))
+            return
+        if config.LOCKED and username != folder:
+            yield Response()
+            yield self.HEADER
+            yield self.LOCKED(folder=folder)
+            yield self.FOOTER
             return
         if folder.startswith('.'):
             yield NotFound()
@@ -567,7 +581,7 @@ h1 { border-bottom: solid darkblue 4pt; }
                 continue
         files.sort(reverse=True)
         if files:
-            for (mtime, name, size, path) in files:
+            for (mtime, name, size, path) in files[:config.MAXFILES]:
                 mtime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
                 yield Template(
                     u' <tr><td>'
@@ -589,6 +603,12 @@ h1 { border-bottom: solid darkblue 4pt; }
             username = self._auth(_cookie)
         except self.NotAuthenticated:
             yield Redirect(config.BASEURL+'/login?f='+urlenc(_path))
+            return
+        if config.LOCKED and username != folder:
+            yield Response()
+            yield self.HEADER
+            yield self.LOCKED(folder=folder)
+            yield self.FOOTER
             return
         if (folder.startswith('.') or
             name.startswith('.')):
@@ -625,6 +645,12 @@ h1 { border-bottom: solid darkblue 4pt; }
             username = self._auth(_cookie)
         except self.NotAuthenticated:
             yield Redirect(config.BASEURL+'/login?f='+urlenc(_path))
+            return
+        if config.LOCKED and username != folder:
+            yield Response()
+            yield self.HEADER
+            yield self.LOCKED(folder=folder)
+            yield self.FOOTER
             return
         item = _fields['item']
         if not (item is not None and item.file and item.filename):
