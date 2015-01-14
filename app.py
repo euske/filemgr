@@ -452,7 +452,7 @@ h1 { border-bottom: solid darkblue 4pt; }
     def login_check(self, _cookie, f='/', username='', password=''):
         try:
             self._auth(_cookie, username, password)
-            resp = Redirect(config.BASEURL+f)
+            resp = Redirect(config.BASEURL+f, Expires='-1')
             resp.headers.extend( ('Set-Cookie', m.OutputString())
                                  for m in _cookie.values() )
             yield resp
@@ -646,13 +646,10 @@ h1 { border-bottom: solid darkblue 4pt; }
         except self.NotAuthenticated:
             yield Redirect(config.BASEURL+'/login?f='+urlenc(_path))
             return
-        if config.LOCKED and username != folder:
-            yield Response()
-            yield self.HEADER
-            yield self.LOCKED(folder=folder)
-            yield self.FOOTER
-            return
-        item = _fields['item']
+        try:
+            item = _fields['item']
+        except KeyError:
+            item = None
         if not (item is not None and item.file and item.filename):
             yield Response()
             yield self.HEADER
@@ -698,7 +695,9 @@ h1 { border-bottom: solid darkblue 4pt; }
                 message=u'ファイルの大きさが制限を超えています。')
             yield self.FOOTER
             return
-        yield Response()
+        resp = Response(Expires='-1')
+        resp.add_header('Cache-Control', 'no-cache')
+        yield resp
         yield self.HEADER
         yield Template(
             u'<title>$(TITLE) - $(folder)/ - アップロード成功</title>\n'
